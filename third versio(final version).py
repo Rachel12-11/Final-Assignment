@@ -1402,30 +1402,42 @@ class SubtitleGeneratorGUI:
 
         print("开始合并字幕到视频...")
         try:
-            input_path = self.input_path.get()
-            output_path = self.output_path.get()
-            srt_path = self.srt_path.get()
+            # 获取所有必需的文件路径
+            input_path = self.input_path.get()    # 原始输入视频文件路径
+            output_path = self.output_path.get()  # 合并后的输出视频文件路径
+            srt_path = self.srt_path.get()        # SRT字幕文件路径
 
+            # 验证关键文件是否存在，防止路径错误导致的处理失败
             for file_path, file_type in [(input_path, "输入视频"), (srt_path, "字幕")]:
                 if not os.path.exists(file_path):
                     messagebox.showerror("错误", f"{file_type}文件不存在:\n{file_path}")
                     return
 
+            # 保存用户在字幕编辑器中所做的任何修改
+            # 确保最新的字幕内容会被合并到视频中
             self.save_subtitle_changes()
 
+            # 开始合并过程，初始化进度条
             self.update_progress(0, "开始合并字幕到视频...")
+            
+            # 调用实际的字幕合并方法
+            # 该方法使用FFmpeg将SRT字幕嵌入到视频中，应用用户选择的字体样式
             if not self.merge_subtitles(input_path, srt_path, output_path):
                 raise Exception("合并字幕失败")
 
+            # 合并成功，更新进度条到100%并显示完成状态
             self.update_progress(100, "视频合并完成")
             print("===== 视频合并完成 =====")
             messagebox.showinfo("成功", "字幕已成功合并到视频中！")
 
         except Exception as e:
+            # 异常处理：捕获合并过程中的所有错误
             print(f"合并过程中出错: {str(e)}")
             messagebox.showerror("错误", f"合并过程中出错: {str(e)}")
-            self.update_progress(0, "合并失败")
+            self.update_progress(0, "合并失败")  # 重置进度条显示失败状态
         finally:
+            # 无论成功还是失败，都要重置处理状态
+            # 这样用户可以重新尝试合并操作或进行其他操作
             self.processing = False
 
 
