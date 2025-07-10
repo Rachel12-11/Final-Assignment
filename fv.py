@@ -283,8 +283,10 @@ class SubtitleGeneratorGUI:
                                              state="disabled")
         self.merge_video_button.pack(side="left", padx=5)
 
-        ttk.Button(button_frame, text="保存修改", command=self.save_subtitle_changes).pack(side="left", padx=5)
+        # 新增：批量处理按钮
+        ttk.Button(button_frame, text="批量处理", command=self.browse_batch_inputs).pack(side="left", padx=5)
 
+        ttk.Button(button_frame, text="保存修改", command=self.save_subtitle_changes).pack(side="left", padx=5)
         ttk.Button(button_frame, text="退出", command=self.root.quit).pack(side="right", padx=5)
 
         # 进度条 - 紧凑布局
@@ -999,6 +1001,7 @@ class SubtitleGeneratorGUI:
         # 限制每个说话人的样本数量（只保留最新20个）
         if len(self.speaker_embeddings[speaker]) > 20:
             self.speaker_embeddings[speaker] = self.speaker_embeddings[speaker][-20:]
+
     def auto_detect_speakers(self):
         """自动识别所有字幕的说话人（支持预设说话人数量）"""
         if not self.subtitles_generated or not self.input_path.get():
@@ -1074,78 +1077,53 @@ class SubtitleGeneratorGUI:
 
         self.update_progress(100, "说话人识别完成")
         messagebox.showinfo("成功", f"已完成说话人识别，共{n_speakers}个说话人")
-    def redistribute_speakers(self, target_count):
-        """根据目标数量重新分配说话人"""
-        if not self.subtitles_generated or not self.subtitles_with_speakers:
-            messagebox.showerror("错误", "请先生成字幕并完成自动识别")
-            return
 
-        if target_count < 1:
-            messagebox.showerror("错误", "目标数量必须至少为1")
-            return
+    def batch_process_subtitles(self, file_list):
+        """批量处理多个视频文件，自动生成字幕和SRT/JSON"""
+        total = len(file_list)
+        for idx, input_path in enumerate(file_list, 1):
+            try:
+                self.update_progress(0, f"正在处理({idx}/{total}): {os.path.basename(input_path)}")
+                if not os.path.exists(input_path):
+                    self.update_progress(0, f"文件不存在: {input_path}")
+                    continue
 
-        current_speakers = list(set(
-            speaker for sub in self.subtitles_with_speakers if 'speaker' in sub and sub['speaker'] for speaker in
-            [sub['speaker']]))
-        current_count = len(current_speakers)
+                base, ext = os.path.splitext(os.path.normpath(input_path))
+                srt_path = f"{base}.srt"
+                json_path = f"{base}_subtitles.json"
 
-        if current_count <= target_count:
-            messagebox.showinfo("提示", f"当前说话人数量({current_count})已小于或等于目标数量({target_count})")
-            return
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    audio_path = os.path.normpath(os.path.join(temp_dir, 'audio.wav'))
+                    # 1. 提取音频
+                    self.update_progress(10, f"[{idx}/{total}] 提取音频...")
+                    if not self.extract_audio(input_path, audio_path):
+                        continue
+                    # 2. 语音识别
+                    self.update_progress(30, f"[{idx}/{total}] 语音识别...")
+                    subtitles = self.transcribe_audio(audio_path)
+                    if not subtitles:
+                        continue
+                    # 3. 生成SRT
+                    self.update_progress(60, f"[{idx}/{total}] 生成SRT...")
+                    self.generate_srt(subtitles, srt_path)
+                    # 4. 保存JSON
+                    self.update_progress(80, f"[{idx}/{total}] 保存JSON...")
+                    self.save_subtitles_json(subtitles, json_path)
+                    self.update_progress(100, f"[{idx}/{total}] 完成: {os.path.basename(input_path)}")
+            except Exception as e:
+                print(f"批量处理出错: {str(e)}")
+                self.update_progress(0, f"处理失败: {os.path.basename(input_path)}")
+        self.update_progress(0, "批量处理完成")
+        messagebox.showinfo("批量处理", "所有文件处理完成！")
 
-        # 创建新的说话人名称列表
-        new_speakers = [f"说话人{i + 1}" for i in range(target_count)]
-
-        # 将新说话人添加到系统中
-        for speaker in new_speakers:
-            if speaker not in self.speakers:
-                self.speakers.append(speaker)
-        self.speaker_combo['values'] = self.speakers
-
-        # 映射旧说话人到新说话人（按出现频率分配）
-        speaker_frequency = {}
-        for sub in self.subtitles_with_speakers:
-            speaker = sub.get('speaker')
-            if speaker:
-                speaker_frequency[speaker] = speaker_frequency.get(speaker, 0) + 1
-
-        # 按频率排序旧说话人
-        sorted_old_speakers = sorted(speaker_frequency.keys(), key=lambda x: -speaker_frequency[x])
-
-        # 创建映射表（前target_count个旧说话人保留原名，其余合并）
-        speaker_mapping = {}
-        for i, old_speaker in enumerate(sorted_old_speakers):
-            if i < target_count:
-                # 保留前target_count个说话人
-                speaker_mapping[old_speaker] = old_speaker
-                # 确保在新列表中
-                if old_speaker not in new_speakers:
-                    new_speakers.append(old_speaker)
-            else:
-                # 合并到最接近的新说话人
-                mapped_index = i % target_count
-                speaker_mapping[old_speaker] = new_speakers[mapped_index]
-
-        # 应用映射表更新所有字幕
-        for sub in self.subtitles_with_speakers:
-            if 'speaker' in sub and sub['speaker'] in speaker_mapping:
-                sub['speaker'] = speaker_mapping[sub['speaker']]
-
-        # 更新说话人特征库
-        new_embeddings = {}
-        for old_speaker, embeddings in self.speaker_embeddings.items():
-            if old_speaker in speaker_mapping:
-                new_speaker = speaker_mapping[old_speaker]
-                if new_speaker not in new_embeddings:
-                    new_embeddings[new_speaker] = []
-                new_embeddings[new_speaker].extend(embeddings)
-        self.speaker_embeddings = new_embeddings
-
-        # 更新界面
-        self.update_subtitle_preview(self.subtitles_with_speakers)
-        self.save_subtitle_changes()
-
-        messagebox.showinfo("成功", f"已将说话人数量调整为 {target_count} 个")
+    def browse_batch_inputs(self):
+        """浏览并选择多个视频文件进行批量处理"""
+        filenames = filedialog.askopenfilenames(
+            title="选择多个视频文件进行批量处理",
+            filetypes=[("视频文件", "*.mp4;*.mov;*.avi;*.mkv")]
+        )
+        if filenames:
+            threading.Thread(target=self.batch_process_subtitles, args=(filenames,), daemon=True).start()
 
     def generate_srt(self, subtitles, srt_path):
         """生成带说话人信息的SRT格式字幕文件"""
