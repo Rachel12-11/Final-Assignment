@@ -231,14 +231,6 @@ class SubtitleGeneratorGUI:
         preset_spin = ttk.Spinbox(speaker_frame, from_=1, to=10, width=5, textvariable=self.preset_speaker_count)
         preset_spin.pack(side="left", padx=2)
 
-        # 新增：说话人相似度阈值设置
-        ttk.Label(speaker_frame, text="相似度阈值:").pack(side="left", padx=(15, 0))
-        self.speaker_threshold_var = tk.DoubleVar(value=self.speaker_threshold)
-        threshold_spin = ttk.Spinbox(speaker_frame, from_=0.5, to=0.99, increment=0.01, width=5, textvariable=self.speaker_threshold_var)
-        threshold_spin.pack(side="left", padx=2)
-        def update_threshold(*args):
-            self.speaker_threshold = self.speaker_threshold_var.get()
-        self.speaker_threshold_var.trace_add("write", update_threshold)
         # 说话人选择（初始隐藏）
         self.speaker_selector_frame = ttk.Frame(options_frame)
 
