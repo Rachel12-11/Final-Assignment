@@ -119,11 +119,15 @@ class SubtitleGeneratorGUI:
 
     def _set_ffmpeg_for_whisper(self):
         """为Whisper设置FFmpeg路径"""
+        # 检查ffmpeg_path是否存在且路径有效
         if self.ffmpeg_path and os.path.exists(self.ffmpeg_path):
+            # 获取ffmpeg所在目录
             ffmpeg_dir = os.path.dirname(self.ffmpeg_path)
+            # 将ffmpeg目录添加到环境变量PATH
             os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
             print(f"已为Whisper设置FFmpeg路径: {self.ffmpeg_path}")
         else:
+            # 路径无效时给出警告
             print(f"警告: 指定的FFmpeg路径不存在: {self.ffmpeg_path}")
 
     def create_widgets(self):
@@ -1115,15 +1119,6 @@ class SubtitleGeneratorGUI:
                 self.update_progress(0, f"处理失败: {os.path.basename(input_path)}")
         self.update_progress(0, "批量处理完成")
         messagebox.showinfo("批量处理", "所有文件处理完成！")
-
-    def browse_batch_inputs(self):
-        """浏览并选择多个视频文件进行批量处理"""
-        filenames = filedialog.askopenfilenames(
-            title="选择多个视频文件进行批量处理",
-            filetypes=[("视频文件", "*.mp4;*.mov;*.avi;*.mkv")]
-        )
-        if filenames:
-            threading.Thread(target=self.batch_process_subtitles, args=(filenames,), daemon=True).start()
 
     def generate_srt(self, subtitles, srt_path):
         """生成带说话人信息的SRT格式字幕文件"""
